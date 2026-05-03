@@ -1,9 +1,9 @@
 package com.booru.app.api
 
 import com.booru.app.model.BooruPost
-import com.booru.app.model.GelbooruResponse
-import com.booru.app.model.Rule34Response
+import com.booru.app.model.BooruPostListDeserializer
 import com.booru.app.util.TagHelper
+import com.google.gson.GsonBuilder
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -14,6 +14,10 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Unified Booru API service that supports both Gelbooru and Rule34.xxx.
+ *
+ * Both APIs return JSON arrays directly: [{"id":1,"tags":"...",...}, ...]
+ * A custom Gson deserializer (BooruPostListDeserializer) handles this
+ * by accepting both raw arrays and wrapped objects for maximum compatibility.
  */
 class BooruApiClient {
 
@@ -34,6 +38,17 @@ class BooruApiClient {
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
             .build()
+
+        /**
+         * Gson instance that registers BooruPostListDeserializer
+         * for any List<BooruPost> type.
+         */
+        private val gson = GsonBuilder()
+            .registerTypeAdapter(
+                object : TypeToken<List<BooruPost>>() {}.type,
+                BooruPostListDeserializer()
+            )
+            .create()
     }
 
     // ============= Gelbooru Service =============
@@ -49,9 +64,8 @@ class BooruApiClient {
             @Query("user_id") userId: String,
             @Query("tags") tags: String = "",
             @Query("limit") limit: Int = 40,
-            @Query("pid") pid: Int = 0,
-            @Query("rating") rating: String? = null
-        ): GelbooruResponse
+            @Query("pid") pid: Int = 0
+        ): List<BooruPost>
     }
 
     // ============= Rule34 Service =============
@@ -67,9 +81,8 @@ class BooruApiClient {
             @Query("user_id") userId: String,
             @Query("tags") tags: String = "",
             @Query("limit") limit: Int = 40,
-            @Query("pid") pid: Int = 0,
-            @Query("rating") rating: String? = null
-        ): Rule34Response
+            @Query("pid") pid: Int = 0
+        ): List<BooruPost>
     }
 
     // ============= Client instances =============
@@ -78,7 +91,7 @@ class BooruApiClient {
         Retrofit.Builder()
             .baseUrl(GELBOORU_BASE_URL)
             .client(okHttpClient)
-            .addConverterFactory(GsonConverterFactory.create())
+            .addConverterFactory(GsonConverterFactory.create(gson))
             .build()
     }
 
@@ -86,7 +99,7 @@ class BooruApiClient {
         Retrofit.Builder()
             .baseUrl(RULE34_BASE_URL)
             .client(okHttpClient)
-            .addConverterFactory(GsonConverterFactory.create())
+            .addConverterFactory(GsonConverterFactory.create(gson))
             .build()
     }
 
@@ -119,28 +132,31 @@ class BooruApiClient {
     ): List<BooruPost> {
         val formattedTags = TagHelper.convertForSource(appTags, source)
 
-        return when (source.lowercase()) {
-            SOURCE_RULE34 -> {
-                val response = rule34Service.getPosts(
-                    apiKey = apiKey,
-                    userId = userId,
-                    tags = formattedTags,
-                    pid = page,
-                    limit = limit
-                )
-                response.posts ?: emptyList()
+        return try {
+            when (source.lowercase()) {
+                SOURCE_RULE34 -> {
+                    rule34Service.getPosts(
+                        apiKey = apiKey,
+                        userId = userId,
+                        tags = formattedTags,
+                        pid = page,
+                        limit = limit
+                    )
+                }
+                SOURCE_GELBOORU -> {
+                    gelbooruService.getPosts(
+                        apiKey = apiKey,
+                        userId = userId,
+                        tags = formattedTags,
+                        pid = page,
+                        limit = limit
+                    )
+                }
+                else -> emptyList()
             }
-            SOURCE_GELBOORU -> {
-                val response = gelbooruService.getPosts(
-                    apiKey = apiKey,
-                    userId = userId,
-                    tags = formattedTags,
-                    pid = page,
-                    limit = limit
-                )
-                response.posts ?: emptyList()
-            }
-            else -> emptyList()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
         }
     }
 
@@ -165,7 +181,6 @@ class BooruApiClient {
         val topTags = TagHelper.extractTopTags(tags, count = 3)
         if (topTags.isEmpty()) return emptyList()
 
-        // Fetch a larger batch, then filter out the current post
         val searchQuery = TagHelper.buildSearchQuery(topTags)
         val results = searchPosts(
             source = source,

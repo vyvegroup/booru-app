@@ -1,6 +1,11 @@
 package com.booru.app.model
 
 import com.google.gson.annotations.SerializedName
+import com.google.gson.JsonDeserializationContext
+import com.google.gson.JsonDeserializer
+import com.google.gson.JsonElement
+import com.google.gson.reflect.TypeToken
+import java.lang.reflect.Type
 
 data class BooruPost(
     @SerializedName("id") val id: Int,
@@ -33,9 +38,6 @@ data class BooruPost(
     @SerializedName("post_locked") val postLocked: Int? = null,
     @SerializedName("has_children") val hasChildren: String? = null
 ) {
-    /**
-     * Returns the effective image URL, preferring file_url then constructing from directory/image
-     */
     fun getEffectiveImageUrl(baseUrl: String): String {
         if (!fileUrl.isNullOrBlank()) return fileUrl
         if (!image.isNullOrBlank() && !directory.isNullOrBlank()) {
@@ -44,9 +46,6 @@ data class BooruPost(
         return ""
     }
 
-    /**
-     * Returns the effective preview URL
-     */
     fun getEffectivePreviewUrl(baseUrl: String): String {
         if (!previewUrl.isNullOrBlank()) return previewUrl
         if (!directory.isNullOrBlank() && !image.isNullOrBlank()) {
@@ -56,9 +55,6 @@ data class BooruPost(
         return getEffectiveImageUrl(baseUrl)
     }
 
-    /**
-     * Returns the effective sample URL
-     */
     fun getEffectiveSampleUrl(baseUrl: String): String {
         if (!sampleUrl.isNullOrBlank()) return sampleUrl
         return getEffectiveImageUrl(baseUrl)
@@ -70,23 +66,51 @@ data class BooruPost(
 }
 
 /**
- * Gelbooru API response wrapper
+ * Flexible JSON deserializer that handles both:
+ * - Direct array: [{"id":1, ...}, {"id":2, ...}]
+ * - Object with array: {"post": [...]} or {"posts": [...]}
+ *
+ * This is needed because Gelbooru/Rule34 APIs may return either format
+ * depending on the endpoint and parameters.
  */
-data class GelbooruResponse(
-    @SerializedName("post") val posts: List<BooruPost>? = null,
-    @SerializedName("@attributes")
-    val attributes: ResponseAttributes? = null
-) {
-    data class ResponseAttributes(
-        @SerializedName("limit") val limit: Int? = null,
-        @SerializedName("offset") val offset: Int? = null,
-        @SerializedName("count") val count: Int? = null
-    )
-}
+class BooruPostListDeserializer : JsonDeserializer<List<BooruPost>> {
 
-/**
- * Rule34 API can return either a list directly or an object with a posts array
- */
-data class Rule34Response(
-    @SerializedName("posts") val posts: List<BooruPost>? = null
-)
+    override fun deserialize(json: JsonElement, typeOfT: Type, context: JsonDeserializationContext): List<BooruPost> {
+        val postType = object : TypeToken<List<BooruPost>>() {}.type
+
+        return when {
+            // Case 1: JSON array directly: [{"id":1,...}, ...]
+            json.isJsonArray -> {
+                context.deserialize<List<BooruPost>>(json, postType)
+            }
+            // Case 2: JSON object with "post" key (Gelbooru XML-style JSON)
+            json.isJsonObject -> {
+                val obj = json.asJsonObject
+                when {
+                    obj.has("post") -> {
+                        val postElement = obj.get("post")
+                        if (postElement.isJsonArray) {
+                            context.deserialize<List<BooruPost>>(postElement, postType)
+                        } else {
+                            emptyList()
+                        }
+                    }
+                    obj.has("posts") -> {
+                        val postsElement = obj.get("posts")
+                        if (postsElement.isJsonArray) {
+                            context.deserialize<List<BooruPost>>(postsElement, postType)
+                        } else {
+                            emptyList()
+                        }
+                    }
+                    // If object looks like a single post (has "id" field), wrap it
+                    obj.has("id") -> {
+                        listOf(context.deserialize<BooruPost>(json, BooruPost::class.java))
+                    }
+                    else -> emptyList()
+                }
+            }
+            else -> emptyList()
+        }
+    }
+}
