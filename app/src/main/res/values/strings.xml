@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">BooruApp</string>
+    <string name="settings">Settings</string>
+    <string name="search">Search</string>
+    <string name="no_results">No results found</string>
+    <string name="error_loading">Error loading posts</string>
+    <string name="configure_api">Configure API in Settings</string>
+    <string name="fyp_title">You might also like…</string>
+    <string name="tags_hint">Search tags (e.g. Pokemon 1girl~2girls)</string>
+</resources>

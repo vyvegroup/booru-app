@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="colorPrimary">#6200EE</color>
+    <color name="colorPrimaryDark">#3700B3</color>
+    <color name="colorAccent">#03DAC5</color>
+    <color name="colorBgDark">#1E1E2E</color>
+    <color name="colorTextPrimary">#E0E0E0</color>
+    <color name="colorTextSecondary">#A0A0A0</color>
+    <color name="colorInfoBg">#E8F0FE</color>
+    <color name="colorCardBg">#FFFFFF</color>
+    <color name="colorSurface">#2D2D3D</color>
+    <color name="colorOnSurface">#FFFFFF</color>
+</resources>
