@@ -4,6 +4,7 @@ import com.booru.app.model.BooruPost
 import com.booru.app.model.BooruPostListDeserializer
 import com.booru.app.util.TagHelper
 import com.google.gson.GsonBuilder
+import com.google.gson.reflect.TypeToken
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
